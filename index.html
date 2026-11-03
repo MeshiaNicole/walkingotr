@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="theme.js"></script>
+<title>Walk Log</title>
+<meta name="description" content="Track your daily walks, mood, water, and weight in one place.">
+<meta name="theme-color" content="#f3f4f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1113" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Walk Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: phone-first single column — week strip on top, one screen per tab, fixed tab bar at the bottom. Each metric owns one color: steps green, water blue, mood amber. */
+:root{
+  --bg:#f3f4f1; --card:#ffffff; --ink:#14171c; --muted:#6b7079; --line:#e5e7e2; --sunk:#eef0ec;
+  --steps:#1d8a5a; --steps-soft:#e2f2e9; --water:#2f7fe8; --water-soft:#e4eefc; --mood:#e8952a; --mood-soft:#fcf0de;
+  --on-ink:#ffffff; --on-steps:#ffffff; --steps-text:#1d8a5a; --raise:#ffffff;
+  --display:"Bricolage Grotesque", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius:22px; --shadow:0 1px 2px rgba(20,23,28,.04), 0 6px 20px rgba(20,23,28,.05);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1113; --card:#181b1f; --ink:#eef0f2; --muted:#9aa0a8; --line:#262a30; --sunk:#1f2328;
+    --steps:#3fbf86; --steps-soft:#16291f; --water:#5c9ff5; --water-soft:#142339; --mood:#f3b45c; --mood-soft:#2c2214;
+    --on-ink:#0f1113; --on-steps:#0f1113; --raise:#353b44; --shadow:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+    --bg:#0f1113; --card:#181b1f; --ink:#eef0f2; --muted:#9aa0a8; --line:#262a30; --sunk:#1f2328;
+    --steps:#3fbf86; --steps-soft:#16291f; --water:#5c9ff5; --water-soft:#142339; --mood:#f3b45c; --mood-soft:#2c2214;
+    --on-ink:#0f1113; --on-steps:#0f1113; --raise:#353b44; --shadow:none;
+    color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding-top:env(safe-area-inset-top,0px)}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+input,textarea{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2.5px solid var(--ink);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+.app{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:14px calc(110px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
+
+/* header */
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-top:6px}
+.hello{font-size:14px;color:var(--muted);font-weight:500}
+.top h1{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.1;margin:2px 0 0;letter-spacing:-.02em;text-wrap:balance}
+.streak{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px 7px 9px;font-weight:600;font-size:14px;white-space:nowrap;box-shadow:var(--shadow)}
+.streak svg{color:#f0952a}
+
+/* week strip */
+.strip{display:flex;align-items:center;gap:6px}
+.strip-days{flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.sday{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0 9px;border-radius:16px;font-size:12px;color:var(--muted);font-weight:600}
+.sday b{font-size:15px;color:var(--ink);font-weight:700}
+.sday.sel{background:var(--ink);color:var(--on-ink)}
+.sday.sel b{color:var(--on-ink)}
+.sday:disabled{opacity:.35;cursor:default}
+.sday .mini{width:20px;height:20px}
+.shift{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none}
+.shift:hover{background:var(--sunk)}
+.shift:disabled{opacity:.3;cursor:default}
+
+/* cards */
+.card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);border:1px solid var(--line);display:flex;flex-direction:column;gap:14px;min-width:0}
+.card-h{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card-h h2{margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.card-h .meta{font-size:13px;color:var(--muted);font-weight:500}
+.ico{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:none}
+
+/* ring */
+.ring-card{align-items:center;text-align:center;padding-top:22px}
+.ring{position:relative;width:min(240px,70vw);aspect-ratio:1;max-width:100%}
+.ring > svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:16}
+.ring .trk{stroke:var(--steps-soft)}
+.ring .val{stroke:var(--steps);stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1)}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.ring-num{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 16px;border-radius:24px;max-width:82%}
+.ring-num:hover{background:var(--sunk)}
+.ring-num b{font-family:var(--display);font-weight:700;font-size:48px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.ring-num b.zero{color:var(--muted)}
+.ring-num small{color:var(--muted);font-size:13px;font-weight:500}
+.ring-num .hint svg{width:12px;height:12px;flex:none}
+.ring-num .hint{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--steps-text);margin-top:4px}
+.enter-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:var(--on-ink);border-radius:999px;padding:12px 20px;font-weight:600;font-size:15px}
+.qa{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:-6px}
+.togo{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:14px;background:var(--steps-soft);color:var(--steps-text);border-radius:999px;padding:6px 12px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{background:var(--sunk);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600}
+.chip:hover{background:var(--steps-soft);color:var(--steps-text)}
+
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mini-card{padding:14px 16px;gap:8px}
+.mini-card label{font-size:13px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.mini-card .in{display:flex;align-items:baseline;gap:6px}
+.mini-card input{width:100%;min-width:0;border:0;background:transparent;font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.02em;padding:0;font-variant-numeric:tabular-nums;border-radius:8px}
+.mini-card input::placeholder{color:var(--line)}
+.mini-card .u{color:var(--muted);font-size:13px;font-weight:500}
+
+/* mood */
+.moods{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.mood{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 2px;border-radius:16px;font-size:12px;font-weight:600;color:var(--muted);transition:background .2s}
+.mood svg{width:36px;height:36px;color:var(--muted)}
+.mood[aria-pressed="true"]{background:var(--mood-soft);color:var(--ink)}
+.mood[aria-pressed="true"] svg{color:var(--mood)}
+.mood[aria-pressed="true"] .face{fill:var(--mood);fill-opacity:.18}
+
+/* water */
+.water-row{display:flex;align-items:center;gap:18px}
+.glass{width:64px;height:84px;flex:none}
+.water-info{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0}
+.water-info .big{font-family:var(--display);font-weight:700;font-size:32px;line-height:1;letter-spacing:-.02em}
+.water-info .big span{font-size:15px;color:var(--muted);font-weight:500;font-family:var(--body);letter-spacing:0}
+.drops{display:flex;flex-wrap:wrap;gap:4px}
+.drops i{width:12px;height:12px;border-radius:50%;background:var(--water-soft)}
+.drops i.on{background:var(--water)}
+.steppers{display:flex;flex-direction:column;gap:8px}
+.round{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:600}
+.round.plus{background:var(--water);color:#fff}
+.round.minus{background:var(--sunk)}
+
+textarea{width:100%;border:0;background:var(--sunk);border-radius:14px;padding:12px 14px;resize:vertical;min-height:80px;font-size:15px}
+.foot-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:0 4px;font-size:13px;color:var(--muted)}
+.link{color:var(--muted);font-weight:600;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.link.arm{color:#d64545}
+
+/* week */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{padding:14px 16px;gap:4px}
+.tile .k{font-size:13px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.tile .v{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1.1}
+.tile .s{font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.chart svg{display:block;width:100%;height:auto}
+.chart .hit{cursor:pointer}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+
+/* history */
+.hlist{display:flex;flex-direction:column}
+.hrow{display:flex;align-items:center;gap:12px;padding:12px 4px;border-top:1px solid var(--line);text-align:left;width:100%}
+.hrow:first-child{border-top:0}
+.hrow svg.mini{width:38px;height:38px;flex:none}
+.hrow .main{flex:1;min-width:0}
+.hrow .main b{display:block;font-weight:700}
+.hrow .main small{color:var(--muted);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrow .right{text-align:right;font-size:13px;color:var(--muted);display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.hrow .right b{font-family:var(--display);font-size:18px;color:var(--ink)}
+.empty{text-align:center;padding:28px 12px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:10px}
+.empty b{color:var(--ink);font-size:16px}
+.btn{background:var(--ink);color:var(--on-ink);border-radius:999px;padding:11px 18px;font-weight:600;font-size:14px}
+.btn.ghost{background:var(--sunk);color:var(--ink)}
+
+/* settings */
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0}
+.set-row label{font-weight:600}
+.set-row small{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.num-step{display:flex;align-items:center;gap:6px;background:var(--sunk);border-radius:999px;padding:4px}
+.num-step button{width:34px;height:34px;border-radius:50%;background:var(--card);font-weight:700;font-size:18px}
+.num-step input{width:68px;border:0;background:transparent;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.backup{display:flex;gap:10px;flex-wrap:wrap}
+.msg{font-size:13px;color:var(--muted);min-height:1em}
+.p{margin:0;color:var(--muted);font-size:14px;max-width:60ch}
+
+/* tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:8px 16px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+.tabs nav{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font-size:11px;font-weight:600;color:var(--muted);border-radius:14px}
+.tab[aria-current="page"]{color:var(--ink)}
+.tab[aria-current="page"] .tab-ico{background:var(--ink);color:var(--on-ink)}
+.tab-ico{width:46px;height:30px;border-radius:999px;display:grid;place-items:center;transition:background .2s}
+
+.view{display:flex;flex-direction:column;gap:16px;animation:in .28s ease}
+@keyframes in{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--on-ink);padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;z-index:6}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+
+/* segmented controls */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--sunk);border-radius:999px;padding:4px;gap:4px}
+.seg button{border-radius:999px;padding:9px 10px;font-weight:600;font-size:14px;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.seg button[aria-pressed="true"]{background:var(--raise);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.stack{display:flex;flex-direction:column;gap:16px}
+
+/* week navigation */
+.wkhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wkhead .lbl{text-align:center;min-width:0}
+.wkhead .lbl b{display:block;font-size:17px;font-weight:700}
+.wkhead .lbl small{color:var(--muted);font-size:13px}
+.shift.big{width:40px;height:40px;background:var(--card);border:1px solid var(--line);color:var(--ink)}
+.shift.big:disabled{opacity:.35}
+.back-now{align-self:center;font-size:13px;font-weight:600;color:var(--steps-text);text-decoration:underline;text-underline-offset:3px}
+
+/* accent swatches */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:10px 6px}
+.swatch{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);padding:4px 0;border-radius:14px}
+.swatch i{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);transition:transform .15s}
+.swatch i svg{opacity:0}
+.swatch[aria-pressed="true"]{color:var(--ink)}
+.swatch[aria-pressed="true"] i{box-shadow:0 0 0 3px var(--card),0 0 0 5px currentColor;transform:scale(1.04)}
+.swatch[aria-pressed="true"] i svg{opacity:1}
+
+/* month calendar */
+.mhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mhead h2{margin:0;font-size:17px;font-weight:700}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal .wd{font-size:11px;font-weight:700;color:var(--muted);text-align:center;letter-spacing:.04em}
+.cell{aspect-ratio:1;border-radius:12px;display:flex;align-items:flex-start;justify-content:flex-start;padding:5px 7px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;position:relative;background:var(--sunk);color:var(--muted);min-width:0}
+.cell.l0{background:color-mix(in srgb,var(--steps) 12%,var(--card));color:var(--ink)}
+.cell.l1{background:color-mix(in srgb,var(--steps) 30%,var(--card));color:var(--ink)}
+.cell.l2{background:color-mix(in srgb,var(--steps) 58%,var(--card));color:var(--ink)}
+.cell.l3{background:var(--steps);color:var(--on-steps)}
+.cell.today{box-shadow:inset 0 0 0 2px var(--ink)}
+.cell:disabled{opacity:.35;cursor:default}
+.cell.blank{background:transparent}
+.cell .md{position:absolute;right:6px;bottom:6px;width:7px;height:7px;border-radius:50%;background:var(--mood);box-shadow:0 0 0 1.5px var(--card)}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block}
+.tap-hint{font-size:13px;color:var(--muted);text-align:center;margin:0}
+
+/* bottom sheets */
+.sheet-wrap{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.backdrop{position:absolute;inset:0;background:rgba(10,12,14,.5);animation:fade .2s ease}
+.sheet{position:relative;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:var(--card);border-radius:26px 26px 0 0;padding:10px 20px calc(22px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px;animation:up .28s cubic-bezier(.2,.8,.2,1)}
+.grab{width:40px;height:5px;border-radius:999px;background:var(--line);align-self:center;flex:none}
+@media (min-width:640px){.sheet-wrap{align-items:center;padding:16px}.sheet{border-radius:26px;padding-bottom:22px}}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sheet-h h2{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.15;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sheet-h small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.x{width:36px;height:36px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;flex:none}
+.stat-hero{display:flex;align-items:center;gap:16px}
+.stat-hero svg{width:76px;height:76px;flex:none}
+.stat-hero b{font-family:var(--display);font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;display:block}
+.stat-hero span{color:var(--muted);font-size:14px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--sunk);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{font-size:12px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.stat .v{font-family:var(--display);font-weight:700;font-size:20px;display:flex;align-items:center;gap:6px}
+.stat .v svg{width:22px;height:22px;color:var(--mood)}
+.stat-note{background:var(--sunk);border-radius:16px;padding:12px 14px;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.sheet-actions{display:flex;gap:10px}
+.sheet-actions .btn{flex:1;padding:13px 18px;font-size:15px}
+.sheet .p{max-width:none}
+.big-in{width:100%;border:1px solid var(--line);background:var(--sunk);border-radius:18px;padding:14px 16px;text-align:center;font-family:var(--display);font-weight:700;font-size:44px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big-in::placeholder{color:var(--line)}
+.err{color:#d64545;font-size:14px;min-height:1.2em;margin:0}
+.nothing{text-align:center;color:var(--muted);padding:12px 0;margin:0}
+
+/* weight */
+.w-top{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.w-big{font-family:var(--display);font-weight:700;font-size:40px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.w-big small{font-family:var(--body);font-size:15px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:3px}
+.w-cell{display:flex;flex-direction:column;gap:6px;min-width:0}
+.w-cell .k{font-size:13px;font-weight:600;color:var(--muted)}
+.w-cell .s{font-size:13px;color:var(--muted)}
+.w-goal{text-align:left;border-radius:16px;padding:0;display:flex;flex-direction:column;gap:6px}
+.w-goal .w-big{font-size:32px;color:var(--steps-text)}
+.w-goal .set{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--steps-text)}
+.w-goal .set svg{width:12px;height:12px}
+.w-bar{height:12px;border-radius:999px;background:var(--steps-soft);overflow:hidden}
+.w-bar i{display:block;height:100%;width:0;background:var(--steps);border-radius:999px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.w-bar-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
+.w-bar-row b{color:var(--ink)}
+.w-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.w-stats div{background:var(--sunk);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.w-stats span{font-size:12px;color:var(--muted);font-weight:600}
+.w-stats b{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.log-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:var(--on-ink);border-radius:999px;padding:14px 20px;font-weight:700;font-size:16px;width:100%}
+.unit-seg{width:120px}
+.unit-seg button{padding:6px 8px;font-size:13px}
+.wchart svg{display:block;width:100%;height:auto}
+.wlist{display:flex;flex-direction:column}
+.wrow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--line);text-align:left;width:100%}
+.wrow:first-child{border-top:0}
+.wrow .ic{width:36px;height:36px;border-radius:12px;background:var(--steps-soft);color:var(--steps-text);display:grid;place-items:center;flex:none}
+.wrow .ic svg{width:18px;height:18px}
+.wrow .main{flex:1;min-width:0}
+.wrow .main b{display:block;font-weight:700}
+.wrow .main small{color:var(--muted);font-size:13px}
+.wrow .val{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.wrow .val b{font-family:var(--display);font-size:19px;font-variant-numeric:tabular-nums}
+.wrow .val small{font-size:12px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.more{align-self:center;font-size:14px;font-weight:600;color:var(--steps-text);padding:8px 12px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.field input{width:100%;min-width:0;border:1px solid var(--line);background:var(--sunk);border-radius:14px;padding:12px 12px;font-size:16px;font-weight:600}
+.in-unit{position:relative}
+.in-unit span{position:absolute;right:18px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);font-size:18px;pointer-events:none}
+.danger-link{color:#d64545;font-weight:600;font-size:14px;text-decoration:underline;text-underline-offset:3px;align-self:center;padding:6px}
+.danger-link.arm{background:#d64545;color:#fff;text-decoration:none;border-radius:999px;padding:8px 14px}
+.cell .wt{position:absolute;left:5px;bottom:5px;width:15px;height:15px;border-radius:5px;background:var(--ink);color:var(--card);display:grid;place-items:center}
+.cell .wt svg{width:11px;height:11px}
+.wt-key{width:15px;height:15px;border-radius:5px;background:var(--ink);color:var(--card);display:inline-grid;place-items:center}
+.wt-key svg{width:11px;height:11px}
+.stat.wide{grid-column:1 / -1;flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <div class="hello" id="hello">Hello</div>
+      <h1 id="pageTitle">Today</h1>
+    </div>
+    <div class="streak" title="Days in a row with steps logged">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 3.5 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5.3 1.8 1.2 2.8 2 3 .2-3.3-.3-6.3 1-9.5Z"/></svg>
+      <span class="num" id="streak">0</span><span id="streakWord">days</span>
+    </div>
+  </header>
+
+  <div class="strip" id="stripWrap">
+    <button class="shift" id="wkPrev" aria-label="Previous week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg></button>
+    <div class="strip-days" id="strip"></div>
+    <button class="shift" id="wkNext" aria-label="Next week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+  </div>
+
+  <!-- TODAY -->
+  <main class="view" id="v-today">
+    <section class="card ring-card" aria-label="Steps">
+      <div class="ring">
+        <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="trk" cx="100" cy="100" r="86"/><circle class="val" id="ringVal" cx="100" cy="100" r="86" stroke-dasharray="540.35" stroke-dashoffset="540.35"/></svg>
+        <div class="ring-c">
+          <button class="ring-num" id="stepsBtn" aria-label="Enter steps">
+            <b class="num" id="stepsNum">0</b>
+            <small id="ofGoal">of 8,000 steps</small>
+            <span class="hint"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg>Tap to edit</span>
+          </button>
+        </div>
+      </div>
+      <div class="togo" id="togo">Enter your steps to start</div>
+      <button class="enter-btn" id="enterSteps"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg>Enter exact steps</button>
+      <div class="qa">or quick add</div>
+      <div class="chips">
+        <button class="chip" data-add="500">+500</button>
+        <button class="chip" data-add="1000">+1k</button>
+        <button class="chip" data-add="2500">+2.5k</button>
+        <button class="chip" data-add="5000">+5k</button>
+      </div>
+    </section>
+
+    <div class="pair">
+      <div class="card mini-card">
+        <label for="minutes"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>Time</label>
+        <div class="in"><input id="minutes" type="number" inputmode="numeric" min="0" placeholder="0"><span class="u">min</span></div>
+      </div>
+      <div class="card mini-card">
+        <label for="miles"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Distance</label>
+        <div class="in"><input id="miles" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0.0"><span class="u">mi</span></div>
+      </div>
+    </div>
+
+    <section class="card" aria-label="Mood">
+      <div class="card-h"><h2><span class="ico" style="background:var(--mood-soft);color:var(--mood)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.2 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg></span>How do you feel?</h2><span class="meta" id="moodMeta"></span></div>
+      <div class="moods" id="moods" role="group" aria-label="Mood"></div>
+    </section>
+
+    <section class="card" aria-label="Water">
+      <div class="card-h"><h2><span class="ico" style="background:var(--water-soft);color:var(--water)"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z"/></svg></span>Water</h2><span class="meta">8 oz cups</span></div>
+      <div class="water-row">
+        <svg class="glass" viewBox="0 0 64 84" aria-hidden="true">
+          <defs><clipPath id="gclip"><path d="M6 4h52l-6 74a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4Z"/></clipPath></defs>
+          <path d="M6 4h52l-6 74a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4Z" fill="var(--water-soft)"/>
+          <rect id="gfill" x="0" y="84" width="64" height="84" fill="var(--water)" clip-path="url(#gclip)" style="transition:y .5s cubic-bezier(.2,.8,.2,1)"/>
+          <path d="M6 4h52l-6 74a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4Z" fill="none" stroke="var(--water)" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
+        <div class="water-info">
+          <div class="big num" id="wBig">0 <span>/ 8 cups</span></div>
+          <div class="drops" id="drops"></div>
+        </div>
+        <div class="steppers">
+          <button class="round plus" id="wPlus" aria-label="Add a cup">+</button>
+          <button class="round minus" id="wMinus" aria-label="Remove a cup">−</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Note">
+      <div class="card-h"><h2>Note</h2><span class="meta">Optional</span></div>
+      <textarea id="note" placeholder="Where did you walk? Anything you noticed?"></textarea>
+    </section>
+
+    <div class="foot-row"><span id="saved">Saves automatically</span><button class="link" id="clear">Clear this day</button></div>
+  </main>
+
+  <!-- WEEK -->
+  <main class="view" id="v-week" hidden>
+    <div class="seg" role="group" aria-label="Time range">
+      <button data-range="week" aria-pressed="true">Week</button>
+      <button data-range="month" aria-pressed="false">Month</button>
+    </div>
+    <div class="stack" id="r-week">
+    <div class="wkhead">
+      <button class="shift big" id="wPrev" aria-label="Previous week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg></button>
+      <div class="lbl"><b id="wLabel">This week</b><small id="wRange"></small></div>
+      <button class="shift big" id="wNext" aria-label="Next week"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+    </div>
+    <div class="tiles">
+      <div class="card tile"><span class="k"><i class="dot" style="background:var(--steps)"></i>Steps</span><span class="v num" id="sSteps">0</span><span class="s" id="sStepsAvg">0 a day</span></div>
+      <div class="card tile"><span class="k"><i class="dot" style="background:var(--steps)"></i>Goal days</span><span class="v num" id="sGoal">0/7</span><span class="s" id="sMiles">0 mi walked</span></div>
+      <div class="card tile"><span class="k"><i class="dot" style="background:var(--water)"></i>Avg water</span><span class="v num" id="sWater">—</span><span class="s">cups per logged day</span></div>
+      <div class="card tile"><span class="k"><i class="dot" style="background:var(--mood)"></i>Top mood</span><span class="v" id="sMood">—</span><span class="s" id="sMoodN">no check-ins yet</span></div>
+    </div>
+    <section class="card">
+      <div class="card-h"><h2>Daily steps</h2><span class="meta" id="weekRange"></span></div>
+      <div class="chart" id="chart"></div>
+      <div class="legend"><span><svg width="16" height="4" aria-hidden="true"><line x1="0" x2="16" y1="2" y2="2" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3 3"/></svg><span id="goalLegend">Goal</span></span><span><i class="dot" style="background:var(--steps)"></i>Goal met</span><span><i class="dot" style="background:var(--steps);opacity:.35"></i>Under goal</span><span><i class="dot" style="background:var(--mood)"></i>Mood</span><span><i class="dot" style="background:var(--water)"></i>Water</span></div>
+    </section>
+    <button class="back-now" id="wNow" hidden>Back to this week</button>
+    </div>
+
+    <div class="stack" id="r-month" hidden>
+      <section class="card">
+        <div class="mhead">
+          <button class="shift" id="mPrev" aria-label="Previous month"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg></button>
+          <h2 id="mTitle">Month</h2>
+          <button class="shift" id="mNext" aria-label="Next month"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="cal" id="cal"></div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--sunk)"></i>No entry</span>
+          <span><i class="sw" style="background:color-mix(in srgb,var(--steps) 30%,var(--card))"></i>Under half</span>
+          <span><i class="sw" style="background:color-mix(in srgb,var(--steps) 58%,var(--card))"></i>Halfway+</span>
+          <span><i class="sw" style="background:var(--steps)"></i>Goal met</span>
+          <span><i class="dot" style="background:var(--mood)"></i>Mood logged</span>
+          <span><i class="wt-key"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M8 10.5a4.5 4.5 0 0 1 8 0"/><path d="m12 10.5 1.6-2"/></svg></i>Weight logged</span>
+        </div>
+        <p class="tap-hint">Tap a day to see its stats</p>
+      </section>
+      <div class="tiles">
+        <div class="card tile"><span class="k"><i class="dot" style="background:var(--steps)"></i>Days logged</span><span class="v num" id="mDays">0</span><span class="s" id="mDaysSub">this month</span></div>
+        <div class="card tile"><span class="k"><i class="dot" style="background:var(--steps)"></i>Steps</span><span class="v num" id="mSteps">0</span><span class="s" id="mStepsSub">no walks yet</span></div>
+        <div class="card tile"><span class="k"><i class="dot" style="background:var(--steps)"></i>Goal days</span><span class="v num" id="mGoal">0</span><span class="s" id="mMiles">0 mi walked</span></div>
+        <div class="card tile"><span class="k"><i class="dot" style="background:var(--water)"></i>Avg water</span><span class="v num" id="mWater">—</span><span class="s">cups per logged day</span></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- WEIGHT -->
+  <main class="view" id="v-weight" hidden>
+    <section class="card">
+      <div class="card-h"><h2>Your weight</h2>
+        <div class="seg unit-seg" role="group" aria-label="Weight unit"><button data-unit="lb" aria-pressed="true">lb</button><button data-unit="kg" aria-pressed="false">kg</button></div>
+      </div>
+      <div class="w-top">
+        <div class="w-cell"><span class="k">Current weight</span><div class="w-big" id="wCur">—</div><span class="s" id="wCurSub">No weigh-ins yet</span></div>
+        <button class="w-cell w-goal" id="wGoalBtn"><span class="k">Goal weight</span><div class="w-big" id="wGoal">—</div><span class="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16Z"/></svg><span id="wGoalAct">Set your goal</span></span></button>
+      </div>
+      <div id="wProg" hidden>
+        <div class="w-bar" aria-hidden="true"><i id="wBarFill"></i></div>
+        <div class="w-bar-row" style="margin-top:8px"><span id="wBarLeft"></span><span id="wBarRight"></span></div>
+      </div>
+      <div class="w-stats" id="wStats" hidden>
+        <div><span>Starting</span><b id="wStart">—</b></div>
+        <div><span>Change</span><b id="wChange">—</b></div>
+        <div><span>To go</span><b id="wToGo">—</b></div>
+      </div>
+    </section>
+    <button class="log-btn" id="wLogBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Log weight</button>
+    <section class="card" id="wTrendCard" hidden>
+      <div class="card-h"><h2>Trend</h2>
+        <div class="seg" role="group" aria-label="Chart range" style="width:170px"><button data-wrange="30" aria-pressed="false">1M</button><button data-wrange="90" aria-pressed="true">3M</button><button data-wrange="all" aria-pressed="false">All</button></div>
+      </div>
+      <div class="wchart" id="wChart"></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Weight log</h2><span class="meta" id="wCount"></span></div>
+      <div class="wlist" id="wList"></div>
+      <button class="more" id="wMore" hidden>Show more</button>
+    </section>
+  </main>
+
+  <!-- HISTORY -->
+  <main class="view" id="v-history" hidden>
+    <section class="card"><div class="hlist" id="history"></div></section>
+  </main>
+
+  <!-- ME -->
+  <main class="view" id="v-me" hidden>
+    <section class="card">
+      <div class="card-h"><h2>Display</h2><span class="meta">On this device</span></div>
+      <div class="seg" role="group" aria-label="Display mode">
+        <button data-theme-opt="system" aria-pressed="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>System</button>
+        <button data-theme-opt="light" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Light</button>
+        <button data-theme-opt="dark" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>Dark</button>
+      </div>
+      <p class="p">System follows your phone's light or dark setting.</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Accent color</h2><span class="meta" id="accentName">Green</span></div>
+      <div class="swatches" id="swatches" role="group" aria-label="Accent color"></div>
+      <p class="p">Colors your step ring, charts, and calendar.</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Daily goals</h2></div>
+      <div class="set-row"><label for="gSteps">Steps<small>Fills your step ring</small></label>
+        <div class="num-step"><button data-g="steps" data-d="-500" aria-label="Lower step goal">−</button><input id="gSteps" type="number" inputmode="numeric" min="500" step="500"><button data-g="steps" data-d="500" aria-label="Raise step goal">+</button></div></div>
+      <div class="set-row"><label for="gWater">Water<small>Cups of 8 oz</small></label>
+        <div class="num-step"><button data-g="water" data-d="-1" aria-label="Fewer cups">−</button><input id="gWater" type="number" inputmode="numeric" min="1" max="20"><button data-g="water" data-d="1" aria-label="More cups">+</button></div></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Backup</h2></div>
+      <p class="p" id="backupNote">Your log saves automatically on this phone. Download a backup now and then. Use Restore to move your log to a new phone or bring it back after clearing your browser.</p>
+      <div class="backup">
+        <button class="btn" id="exportBtn">Download backup</button>
+        <button class="btn ghost" id="importBtn">Restore from backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <div class="msg" id="backupMsg" role="status"></div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h2>Add to your home screen</h2></div>
+      <p class="p"><b>iPhone:</b> in Safari, tap Share, then Add to Home Screen.<br><b>Android:</b> in Chrome, tap the ⋮ menu, then Install app.<br>It opens full screen and keeps your log safer on iPhone.</p>
+    </section>
+  </main>
+</div>
+
+<div class="tabs">
+  <nav aria-label="Sections">
+    <button class="tab" data-tab="today" aria-current="page"><span class="tab-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="m7 21 3-6 3 2v5M10 15l1-6 4 3 3 1M11 9 8 10l-2 4"/></svg></span>Today</button>
+    <button class="tab" data-tab="week"><span class="tab-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 20V12M10 20V6M15 20v-9M20 20V4"/></svg></span>Progress</button>
+    <button class="tab" data-tab="weight"><span class="tab-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M8 10.5a4.5 4.5 0 0 1 8 0"/><path d="m12 10.5 1.6-2"/></svg></span>Weight</button>
+    <button class="tab" data-tab="history"><span class="tab-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></span>History</button>
+    <button class="tab" data-tab="me"><span class="tab-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>Settings</button>
+  </nav>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<div class="sheet-wrap" id="stepsSheet" hidden>
+  <div class="backdrop" data-close></div>
+  <form class="sheet" id="stepsForm" role="dialog" aria-modal="true" aria-labelledby="stepsTitle" novalidate>
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h">
+      <div><h2 id="stepsTitle">Enter your steps</h2><small id="stepsFor">For today</small></div>
+      <button type="button" class="x" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="p">Type the total from your phone's Health app, your watch, or your step counter.</p>
+    <label class="qa" for="stepsIn" style="margin:0">Total steps</label>
+    <input class="big-in" id="stepsIn" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="done" placeholder="0" maxlength="9">
+    <p class="err" id="stepsErr" role="alert"></p>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Save steps</button>
+    </div>
+    <p class="p" style="font-size:13px">This replaces the day's total. To add on top of it, use the quick add buttons.</p>
+  </form>
+</div>
+
+<div class="sheet-wrap" id="daySheet" hidden>
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dayTitle">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h">
+      <div><h2 id="dayTitle">Day</h2><small id="daySub"></small></div>
+      <button type="button" class="x" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="dayBody" class="stack"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>Close</button>
+      <button type="button" class="btn" id="dayEdit">Edit this day</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="sheet-wrap" id="weightSheet" hidden>
+  <div class="backdrop" data-close></div>
+  <form class="sheet" id="weightForm" role="dialog" aria-modal="true" aria-labelledby="wsTitle" novalidate>
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h">
+      <div><h2 id="wsTitle">Log weight</h2><small id="wsSub">Saved with the date and time</small></div>
+      <button type="button" class="x" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="in-unit"><input class="big-in" id="wsVal" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0.0" maxlength="6" aria-label="Weight"><span id="wsUnit">lb</span></div>
+    <div class="field-row">
+      <div class="field"><label for="wsDate">Date</label><input id="wsDate" type="date"></div>
+      <div class="field"><label for="wsTime">Time</label><input id="wsTime" type="time"></div>
+    </div>
+    <p class="err" id="wsErr" role="alert"></p>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn" id="wsSave">Save</button>
+    </div>
+    <button type="button" class="danger-link" id="wsDelete" hidden>Delete this entry</button>
+  </form>
+</div>
+
+<div class="sheet-wrap" id="goalSheet" hidden>
+  <div class="backdrop" data-close></div>
+  <form class="sheet" id="goalForm" role="dialog" aria-modal="true" aria-labelledby="gsTitle" novalidate>
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-h">
+      <div><h2 id="gsTitle">Goal weight</h2><small>The weight you're working toward</small></div>
+      <button type="button" class="x" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="in-unit"><input class="big-in" id="gsVal" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0.0" maxlength="6" aria-label="Goal weight"><span id="gsUnit">lb</span></div>
+    <p class="err" id="gsErr" role="alert"></p>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Save goal</button>
+    </div>
+    <button type="button" class="danger-link" id="gsRemove" hidden>Remove goal</button>
+  </form>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
